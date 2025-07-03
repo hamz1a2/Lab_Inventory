@@ -1,0 +1,239 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Lab Inventory System</title>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            line-height: 1.6;
+            margin: 0;
+            padding: 20px;
+            background-color: #f5f5f5;
+        }
+        .container {
+            max-width: 1200px;
+            margin: 0 auto;
+            background: white;
+            padding: 20px;
+            border-radius: 8px;
+            box-shadow: 0 0 10px rgba(0,0,0,0.1);
+        }
+        h1 {
+            color: #2c3e50;
+            text-align: center;
+        }
+        .upload-section {
+            background: #f9f9f9;
+            padding: 15px;
+            border-radius: 5px;
+            margin-bottom: 20px;
+            border: 2px dashed #ddd;
+            text-align: center;
+        }
+        .file-input {
+            margin: 10px 0;
+        }
+        table {
+            width: 100%;
+            border-collapse: collapse;
+            margin-top: 20px;
+        }
+        th, td {
+            border: 1px solid #ddd;
+            padding: 8px;
+            text-align: left;
+        }
+        th {
+            background-color: #2c3e50;
+            color: white;
+            position: sticky;
+            top: 0;
+        }
+        tr:nth-child(even) {
+            background-color: #f2f2f2;
+        }
+        tr:hover {
+            background-color: #e6f7ff;
+        }
+        .search-box {
+            margin: 15px 0;
+            padding: 8px;
+            width: 100%;
+            box-sizing: border-box;
+        }
+        .sheet-tabs {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 5px;
+            margin-bottom: 15px;
+        }
+        .sheet-tab {
+            padding: 5px 10px;
+            background: #e0e0e0;
+            border-radius: 3px;
+            cursor: pointer;
+        }
+        .sheet-tab.active {
+            background: #2c3e50;
+            color: white;
+        }
+        .status {
+            margin-top: 10px;
+            padding: 10px;
+            border-radius: 3px;
+        }
+        .success {
+            background: #d4edda;
+            color: #155724;
+        }
+        .error {
+            background: #f8d7da;
+            color: #721c24;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>Lab Inventory System</h1>
+        
+        <div class="upload-section">
+            <h3>Upload Excel File</h3>
+            <input type="file" id="fileInput" class="file-input" accept=".xlsx,.xls,.csv">
+            <div id="status" class="status"></div>
+        </div>
+        
+        <div class="sheet-tabs" id="sheetTabs"></div>
+        
+        <input type="text" id="searchInput" class="search-box" placeholder="Search inventory...">
+        
+        <div style="overflow-x: auto;">
+            <table id="inventoryTable">
+                <thead>
+                    <tr id="tableHeader"></tr>
+                </thead>
+                <tbody id="tableBody"></tbody>
+            </table>
+        </div>
+    </div>
+
+    <script>
+        let currentData = [];
+        let currentSheet = '';
+        
+        document.getElementById('fileInput').addEventListener('change', function(e) {
+            const file = e.target.files[0];
+            if (!file) return;
+            
+            const reader = new FileReader();
+            reader.onload = function(e) {
+                try {
+                    const data = new Uint8Array(e.target.result);
+                    const workbook = XLSX.read(data, { type: 'array' });
+                    
+                    // Process all sheets
+                    const sheetsData = {};
+                    workbook.SheetNames.forEach(sheetName => {
+                        const worksheet = workbook.Sheets[sheetName];
+                        sheetsData[sheetName] = XLSX.utils.sheet_to_json(worksheet);
+                    });
+                    
+                    displaySheetTabs(workbook.SheetNames);
+                    displayData(sheetsData[workbook.SheetNames[0]], workbook.SheetNames[0]);
+                    
+                    currentData = sheetsData;
+                    document.getElementById('status').textContent = `Loaded ${file.name} with ${workbook.SheetNames.length} sheet(s)`;
+                    document.getElementById('status').className = 'status success';
+                } catch (error) {
+                    document.getElementById('status').textContent = 'Error loading file: ' + error.message;
+                    document.getElementById('status').className = 'status error';
+                    console.error(error);
+                }
+            };
+            
+            reader.readAsArrayBuffer(file);
+        });
+        
+        function displaySheetTabs(sheetNames) {
+            const tabsContainer = document.getElementById('sheetTabs');
+            tabsContainer.innerHTML = '';
+            
+            sheetNames.forEach(sheetName => {
+                const tab = document.createElement('div');
+                tab.className = 'sheet-tab';
+                tab.textContent = sheetName;
+                tab.onclick = () => {
+                    // Remove active class from all tabs
+                    document.querySelectorAll('.sheet-tab').forEach(t => t.classList.remove('active'));
+                    // Add active class to clicked tab
+                    tab.classList.add('active');
+                    // Display the selected sheet
+                    displayData(currentData[sheetName], sheetName);
+                };
+                
+                // Activate the first tab by default
+                if (sheetNames.indexOf(sheetName) === 0) {
+                    tab.classList.add('active');
+                }
+                
+                tabsContainer.appendChild(tab);
+            });
+        }
+        
+        function displayData(data, sheetName) {
+            currentSheet = sheetName;
+            const tableHeader = document.getElementById('tableHeader');
+            const tableBody = document.getElementById('tableBody');
+            
+            // Clear previous data
+            tableHeader.innerHTML = '';
+            tableBody.innerHTML = '';
+            
+            if (!data || data.length === 0) {
+                tableBody.innerHTML = '<tr><td colspan="10" style="text-align: center;">No data available</td></tr>';
+                return;
+            }
+            
+            // Create table headers from the first object's keys
+            const headers = Object.keys(data[0]);
+            headers.forEach(header => {
+                const th = document.createElement('th');
+                th.textContent = header;
+                tableHeader.appendChild(th);
+            });
+            
+            // Create table rows
+            data.forEach(row => {
+                const tr = document.createElement('tr');
+                headers.forEach(header => {
+                    const td = document.createElement('td');
+                    td.textContent = row[header] !== undefined ? row[header] : '';
+                    tr.appendChild(td);
+                });
+                tableBody.appendChild(tr);
+            });
+        }
+        
+        // Search functionality
+        document.getElementById('searchInput').addEventListener('input', function(e) {
+            const searchTerm = e.target.value.toLowerCase();
+            const rows = document.querySelectorAll('#tableBody tr');
+            
+            rows.forEach(row => {
+                const cells = row.querySelectorAll('td');
+                let matches = false;
+                
+                cells.forEach(cell => {
+                    if (cell.textContent.toLowerCase().includes(searchTerm)) {
+                        matches = true;
+                    }
+                });
+                
+                row.style.display = matches ? '' : 'none';
+            });
+        });
+    </script>
+</body>
+</html>
